@@ -56,7 +56,6 @@ import (
 	"bufio"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net"
@@ -194,7 +193,7 @@ func (p *Proxy) Start() error {
 	errc := make(chan error, len(p.configs))
 	p.lns = make([]net.Listener, 0, len(p.configs))
 	for ipPort, config := range p.configs {
-		ln, err := p.netListen()("tcp", ipPort)
+		ln, err := p.netListen()("unix", ipPort)
 		if err != nil {
 			p.Close()
 			return err
@@ -241,7 +240,7 @@ func (p *Proxy) serveConn(c net.Conn, routes []route) bool {
 		}
 	}
 	// TODO: hook for this?
-	log.Printf("tcpproxy: no routes matched conn %v/%v; closing", c.RemoteAddr().String(), c.LocalAddr().String())
+	log.Printf("unixproxy: no routes matched conn %v/%v; closing", c.RemoteAddr().String(), c.LocalAddr().String())
 	c.Close()
 	return false
 }
@@ -356,7 +355,7 @@ func (dp *DialProxy) HandleConn(src net.Conn) {
 	if dp.DialTimeout >= 0 {
 		ctx, cancel = context.WithTimeout(ctx, dp.dialTimeout())
 	}
-	dst, err := dp.dialContext()(ctx, "tcp", dp.Addr)
+	dst, err := dp.dialContext()(ctx, "unix", dp.Addr)
 	if cancel != nil {
 		cancel()
 	}
@@ -366,10 +365,10 @@ func (dp *DialProxy) HandleConn(src net.Conn) {
 	}
 	defer goCloseConn(dst)
 
-	if err = dp.sendProxyHeader(dst, src); err != nil {
-		dp.onDialError()(src, err)
-		return
-	}
+	//if err = dp.sendProxyHeader(dst, src); err != nil {
+	//	dp.onDialError()(src, err)
+	//	return
+	//}
 	defer goCloseConn(src)
 
 	if ka := dp.keepAlivePeriod(); ka > 0 {
@@ -389,34 +388,34 @@ func (dp *DialProxy) HandleConn(src net.Conn) {
 	<-errc
 }
 
-func (dp *DialProxy) sendProxyHeader(w io.Writer, src net.Conn) error {
-	switch dp.ProxyProtocolVersion {
-	case 0:
-		return nil
-	case 1:
-		var srcAddr, dstAddr *net.TCPAddr
-		if a, ok := src.RemoteAddr().(*net.TCPAddr); ok {
-			srcAddr = a
-		}
-		if a, ok := src.LocalAddr().(*net.TCPAddr); ok {
-			dstAddr = a
-		}
-
-		if srcAddr == nil || dstAddr == nil {
-			_, err := io.WriteString(w, "PROXY UNKNOWN\r\n")
-			return err
-		}
-
-		family := "TCP4"
-		if srcAddr.IP.To4() == nil {
-			family = "TCP6"
-		}
-		_, err := fmt.Fprintf(w, "PROXY %s %s %d %s %d\r\n", family, srcAddr.IP, srcAddr.Port, dstAddr.IP, dstAddr.Port)
-		return err
-	default:
-		return fmt.Errorf("PROXY protocol version %d not supported", dp.ProxyProtocolVersion)
-	}
-}
+//func (dp *DialProxy) sendProxyHeader(w io.Writer, src net.Conn) error {
+//	switch dp.ProxyProtocolVersion {
+//	case 0:
+//		return nil
+//	case 1:
+//		var srcAddr, dstAddr *net.TCPAddr
+//		if a, ok := src.RemoteAddr().(*net.TCPAddr); ok {
+//			srcAddr = a
+//		}
+//		if a, ok := src.LocalAddr().(*net.TCPAddr); ok {
+//			dstAddr = a
+//		}
+//
+//		if srcAddr == nil || dstAddr == nil {
+//			_, err := io.WriteString(w, "PROXY UNKNOWN\r\n")
+//			return err
+//		}
+//
+//		family := "TCP4"
+//		if srcAddr.IP.To4() == nil {
+//			family = "TCP6"
+//		}
+//		_, err := fmt.Fprintf(w, "PROXY %s %s %d %s %d\r\n", family, srcAddr.IP, srcAddr.Port, dstAddr.IP, dstAddr.Port)
+//		return err
+//	default:
+//		return fmt.Errorf("PROXY protocol version %d not supported", dp.ProxyProtocolVersion)
+//	}
+//}
 
 // proxyCopy is the function that copies bytes around.
 // It's a named function instead of a func literal so users get
@@ -468,7 +467,7 @@ func (dp *DialProxy) onDialError() func(src net.Conn, dstDialErr error) {
 		return dp.OnDialError
 	}
 	return func(src net.Conn, dstDialErr error) {
-		log.Printf("tcpproxy: for incoming conn %v, error dialing %q: %v", src.RemoteAddr().String(), dp.Addr, dstDialErr)
+		log.Printf("unixproxy: for incoming conn %v, error dialing %q: %v", src.RemoteAddr().String(), dp.Addr, dstDialErr)
 		src.Close()
 	}
 }

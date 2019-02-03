@@ -45,7 +45,7 @@ func (tl *TargetListener) lock() {
 
 type tcpAddr string
 
-func (a tcpAddr) Network() string { return "tcp" }
+func (a tcpAddr) Network() string { return "unix" }
 func (a tcpAddr) String() string  { return string(a) }
 
 // Addr returns the listener's Address field as a net.Addr.
